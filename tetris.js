@@ -1,319 +1,547 @@
-var y = 0;
-var x = 0;
-var gameField = new Array();
-var pieces = [
-	[
-		[0,1,0],
-		[1,1,1]
-	], [
-		[0,0,1],
-		[1,1,1]
-	], [
-		[1,0,0],
-		[1,1,1]
-	], [
-		[0,1,1],
-		[1,1,0]
-	], [
-		[1,1,0],
-		[0,1,1]
-	], [
-		[1],
-		[1],
-		[1],
-		[1]
-	], [
-		[1,1],
-		[1,1]
-	] ];
+/**
+ * @file
+ * Tetris game.
+ */
 
-//Class to hold the current piece
-function activePiece() {
-	this.orientation = 0;
-	this.x = 45;
-	this.y = 150;
-	var rand = Math.ceil(Math.random() * 7) - 1;
-	this.type = rand;
-	this.piece = pieces[rand];
+var Tetris = (function() {
+"use strict";
 
-	var debug = "Length: " + this.piece[0].length + "\nHeight: " + this.piece.length + "\n\n";
-	//0 orientation read
-	debug += "0 orientation:\n"
-	for (x = 0; x < this.piece.length; x++) {
-		for (y = 0; y < this.piece[0].length; y++) {
-			debug += this.piece[x][y] + ".";
-		}
-		debug += "\n";
-	}
+/**
+ * @file
+ * Tetris game.
+ */
 
-	debug += "90 orientation read\n"
-	for (y = 0; y < this.piece[0].length; y++) {
-		for (x = this.piece.length - 1; x >= 0; x--) {
-			debug += this.piece[x][y] + ".";
-		}
-		debug += "\n";
-	}
-	alert(debug);
+/**
+ * Initialize the game.
+ */
+function Tetris() {
+  var state,
+    renderer,
+    keyboard,
+    gameLoopTimerID;
+
+  var gameLoop = function() {
+    if (state.block.replace === true) {
+      state.block = new Block(state);
+      if (state.gameField.check_direction(state.block)) {
+        clearInterval(gameLoopTimerID);
+        gameOver();
+        this.init();
+      }
+    }
+
+    down();
+
+    renderer.draw(state);
+  };
+
+  var right = function() {
+    if (state.block.x < (state.playAreaX - state.block.width())) {
+      var hit_something = state.gameField.check_direction(state.block, "r");
+
+      if (!hit_something) {
+        state.block.x++;
+        renderer.draw(state);
+      }
+    }
+  };
+
+  var left = function() {
+    if (state.block.x > 0) {
+      var hit_something = state.gameField.check_direction(state.block, "l");
+
+      if (!hit_something) {
+        state.block.x--;
+        renderer.draw(state);
+      }
+    }
+  };
+
+  var up = function() {
+    state.block.orientation += 90;
+    if (state.block.orientation >= 360) {
+      state.block.orientation -= 360;
+    }
+    renderer.draw(state);
+  };
+
+  var down = function() {
+    state.block.down();
+
+    renderer.draw(state);
+
+    clearInterval(gameLoopTimerID);
+    gameLoopTimerID = setInterval(gameLoop, calculate_loop_timer(state.loop_timer, state.level));
+  };
+
+  /**
+   * Function for decrementing the timer interval as the level goes up.
+   * @TODO How expensive is pow()? Could it ever be worthwhile to memoize this?
+   */
+  var calculate_loop_timer = function(start, level) {
+    return start * Math.pow(0.95, level);
+  };
+
+  this.init = function(canvas_id) {
+    var debug = getUrlVars().debug;
+
+    state = new GameState();
+    renderer = new Canvas_renderer(canvas_id);
+    keyboard = new Keyboard();
+    document.onkeydown = keyboard.event;
+
+    gameLoopTimerID = setInterval(gameLoop, state.loop_timer);
+
+    if (debug) {
+      render_debug_grid();
+    }
+
+    // Map keypresses to function calls.
+    keyboard.add(keyboard.right, right);
+    keyboard.add(keyboard.left, left);
+    keyboard.add(keyboard.up, up);
+    keyboard.add(keyboard.down, down);
+    renderer.draw(state);
+  };
+
+  var gameOver = function() {
+    alert("Game over\nYour score is: " + state.score.getScore() + "\nPress ok to start a new game");
+  };
+
+  var render_debug_grid = function() {
+    var t = document.createElement("table"),
+      tb = document.createElement("tbody"),
+      tr, td,
+      y, x;
+
+    for (y = 0; y < state.playAreaY; y++) {
+      tr = document.createElement("tr");
+      for (x = 0; x < state.playAreaX; x++) {
+        td = document.createElement("td");
+        td.appendChild(document.createTextNode(x + "," + y));
+        td.style.width = "21";
+        td.style.height = "23";
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    }
+
+    t.style.position = "absolute";
+    t.style.fontSize = "10px";
+
+    t.appendChild(tb);
+
+    document.getElementById("debug_grid").appendChild(t);
+  };
 }
 
-//Main class
-function tetris() {
-	this.activePiece = new activePiece();
+/**
+ * Keep track of the games internal state.
+ */
+function GameState() {
+  // Numbers make the layouts much easier to read, therefore relying on JS
+  // to cast 0 to false and 1 to true instead of using real booleans.
+  this.available_layouts = [
+    [
+      [0,1,0],
+      [1,1,1]
+    ], [
+      [0,0,1],
+      [1,1,1]
+    ], [
+      [1,0,0],
+      [1,1,1]
+    ], [
+      [0,1,1],
+      [1,1,0]
+    ], [
+      [1,1,0],
+      [0,1,1]
+    ], [
+      [1],
+      [1],
+      [1],
+      [1]
+    ], [
+      [1,1],
+      [1,1]
+    ] ];
+  // @TODO Improve color selection http://gamedev.stackexchange.com/questions/46463/is-there-an-optimum-set-of-colors-for-10-players/46467#46467
+  this.layout_colors = [
+    "rgb(255, 0, 0)",
+    "rgb(255, 255, 0)",
+    "rgb(255, 0, 255)",
+    "rgb(127, 0, 0)",
+    "rgb(127, 127, 0)",
+    "rgb(127, 0, 127)",
+    "rgb(127, 127, 127)"
+  ];
 
-	this.right = function() {
-		if (activePiece.x < (150 - (activePiece.piece[0].length * 15))) {
-			activePiece.x += 15;
-			draw(activePiece);
-		}
-	};
-	this.left = function() {
-		if (activePiece.x > 0) {
-			activePiece.x -= 15;
-			draw(activePiece);
-		}
-	};
-	this.up = function() {
-		activePiece.orientation += 90;
-		if (activePiece.orientation >= 360) {
-			activePiece.orientation -= 360;
-		}
-		draw(activePiece);
-	};
-	this.down = function() {
-		forceDown(activePiece);
-	}
-	this.init = function() {
-		//Create a keyboard handler and assign the onkeydown event to call it
-		var keyboard = new Keyboard();
-		document.onkeydown = keyboard.event;
-		//Map keypresses to function calls
-		keyboard.add(keyboard.right, this.right);
-		keyboard.add(keyboard.left, this.left);
-		keyboard.add(keyboard.up, this.up);
-		keyboard.add(keyboard.down, this.down);
+  this.playAreaX = 11;
+  this.playAreaY = 20;
+  this.blockSize = 15;
+  this.block = new Block(this);
+  this.gameField = new GameField(this);
+  this.score = new Score();
 
-		//Interval the forced drop
-		var gameLoop = setInterval("forceDown(activePiece)", 1000);
-		//Draw our initial screen
-		draw(this.activePiece);
+  this.loop_timer = 1000;
 
-		var debug = "Start:\n";
-		for (x = 0; x < 10; x++) {
-			gameField[x] = new Array();
-			for (y = 0; y < 20; y++) {
-				gameField[x][y] = 0;
-				debug += "0, ";
-			}
-			debug += "\n";
-		}
-		//alert(debug);
-	}
+  this.removed_lines = 0;
 
-	this.init();
+  this.level = 0;
 }
 
-function forceDown(activePiece) {
-	activePiece.y += 15;
+function GameField(gameState) {
+  var state = gameState,
+    gameField = [],
+    x, y;
+  for (x = 0; x < state.playAreaX; x++) {
+    gameField[x] = [];
+    for (y = 0; y < state.playAreaY; y++) {
+      gameField[x][y] = false;
+    }
+  }
 
-	draw(activePiece);
+  /**
+   * Render the gamefield onto the canvas.
+   */
+  this.draw = function(ctx) {
+    var i, x, y;
 
-	var debug = "force:\n";
+    // Clear out the play field.
+    ctx.fillStyle = "rgb(255, 255, 255)";
+    ctx.fillRect(0, 0, (state.playAreaX * state.blockSize), (state.playAreaY * state.blockSize));
 
-	if (activePiece.y + (activePiece.piece.length * 15) + 15 > 300) {
-		xi = activePiece.x / 15;
-		yi = activePiece.y / 15;
-		//TODO To much repetition. Merge into a single function call
-		if (activePiece.orientation == 0) {
-			for (y = 0; y < activePiece.piece[0].length; y++) {
-				for (x = 0; x < activePiece.piece.length; x++) {
-					if (activePiece.piece[x][y] > 0) {
-						//TODO Clear up or comment this reversal of x/y
-						gameField[y + xi][x + yi] = activePiece.piece[x][y];
-					}
-					//debug += gameField[y + xi][x + yi] + ", ";
-				}
-				//debug += "\n";
-			}
-		} else if (activePiece.orientation == 90) {
-			for (y = activePiece.piece[0].length - 1; y >= 0; y--) {
-				for (x = activePiece.piece.length - 1; x >= 0; x--) {
-					if (activePiece.piece[x][y] > 0) {
-						//TODO Clear up or comment this reversal of x/y
-						gameField[x + xi][y + yi - 1] = activePiece.piece[x][y];
-					}
-					//debug += gameField[y + xi][x + yi] + ", ";
-				}
-				//debug += "\n";
-			}
-		} else if (activePiece.orientation == 180) {
-			for (y = activePiece.piece[0].length - 1; y >= 0; y--) {
-				for (x = 0; x < activePiece.piece.length; x++) {
-					if (activePiece.piece[x][y] > 0) {
-						//TODO Clear up or comment this reversal of x/y
-						gameField[x + xi][y + yi - 1] = activePiece.piece[x][y];
-					}
-					//debug += gameField[y + xi][x + yi] + ", ";
-				}
-				//debug += "\n";
-			}
-		} else if (activePiece.orientation == 270) {
-			for (y = activePiece.piece[0].length - 1; y >= 0; y--) {
-				for (x = 0; x < activePiece.piece.length; x++) {
-					if (activePiece.piece[x][y] > 0) {
-						//TODO Clear up or comment this reversal of x/y
-						gameField[x + xi][y + yi - 1] = activePiece.piece[x][y];
-					}
-					//debug += gameField[y + xi][x + yi] + ", ";
-				}
-				//debug += "\n";
-			}
-		}
+    //Background stripes, mostly for debugging.
+    ctx.fillStyle = "rgba(127, 75, 0, 0.3)";
 
-		//debug += "\n\n";
-		for (x = 0; x < gameField.length; x++) {
-			for (y = 0; y < gameField[0].length; y++) {
-				//debug += gameField[x][y] + ", ";
-			}
-			//debug += "\n";
-		}
+    for (i = 0; i < (state.playAreaX * state.blockSize); i += state.blockSize * 2) {
+      ctx.fillRect(i, 0, state.blockSize, (state.playAreaY * state.blockSize));
+    }
 
-		//alert(debug);
-		activePiece.y = -15;
-		activePiece.x = 45;
-		activePiece.orientation = 0;
-		var rand = Math.ceil(Math.random() * 7) - 1;
-		activePiece.piece = pieces[rand];
-	}
+    ctx.fillStyle = "rgb(255, 255, 0)";
+    for (x = 0; x < state.playAreaX; x++) {
+      for (y = 0; y < state.playAreaY; y++) {
+        if (gameField[x][y] === true) {
+          ctx.fillRect(x * state.blockSize + 1, y * state.blockSize + 1, state.blockSize - 2, state.blockSize - 2);
+        }
+      }
+    }
+  };
+
+  /**
+   * Check whether the next square in any direction is filled.
+   */
+  this.check_direction = function(block, direction) {
+    var hit_something = false,
+      render_offsets = { "x": 0, "y": 0 },
+      step, filled,
+      render_coord_x, render_coord_y;
+
+    for (step = 0; step < block.width() * block.height(); step++) {
+      render_coord_x = state.block.x + render_offsets.x;
+      render_coord_y = state.block.y + render_offsets.y;
+
+      switch (direction) {
+        case "u": render_coord_y--; break;
+        case "r": render_coord_x++; break;
+        case "d": render_coord_y++; break;
+        case "l": render_coord_x--; break;
+      }
+
+      if (gameField[render_coord_x][render_coord_y]) {
+        filled = block.piece_filled(step);
+
+        if (filled) {
+          hit_something = true;
+          break;
+        }
+      }
+
+      render_offsets = block.update_render_offsets(render_offsets);
+    }
+
+    return hit_something;
+  };
+
+  /**
+   * Check the current position of the active block and take appropriate action.
+   * @TODO Function naming doesn't make sense anymore.
+   */
+  this.check_hit_bottom = function(block) {
+    var hit_something = this.check_direction(block, "d"),
+      render_offsets, render_coord_x, render_coord_y,
+      step, filled;
+
+    if (block.y + block.height() >= gameField[0].length) {
+      hit_something = true;
+    }
+
+    if (!hit_something) {
+      return;
+    }
+
+    // The active block has hit something below, and should be pushed to the
+    // permanent gamefield.
+    block.replace = true;
+    render_offsets = { "x": 0, "y": 0 };
+
+    for (step = 0; step < block.width() * block.height(); step++) {
+      render_coord_x = block.x + render_offsets.x;
+      render_coord_y = block.y + render_offsets.y;
+
+      filled = block.piece_filled(step);
+
+      if (filled) {
+        gameField[render_coord_x][render_coord_y] = true;
+      }
+
+      render_offsets = block.update_render_offsets(render_offsets);
+    }
+
+    this.check_for_full_lines();
+  };
+
+  /**
+   * Scan a line for it being full. If so remove it.
+   *
+   * @TODO This logic could be easier if the gamefield array's were inverted,
+   * but that might complicate a lot of other logic. Investigate?
+   */
+  this.check_for_full_lines = function() {
+    var full_lines = 0,
+      y, x,
+      line_piece_count;
+
+    for (y = 0; y < gameField[0].length; y++) {
+      line_piece_count = 0;
+      for (x = 0; x < gameField.length; x++) {
+        gameField[x][y] && line_piece_count++;
+      }
+
+      if (line_piece_count === gameField.length) {
+        full_lines++;
+        for (x = 0; x < gameField.length; x++) {
+          gameField[x].splice(y, 1);
+          gameField[x].unshift(false);
+        }
+      }
+    }
+
+    if (full_lines > 0) {
+      state.score.removed_lines(full_lines);
+    }
+
+    state.level += 0.1 * full_lines;
+  };
 }
 
-//TODO Function to long. Make it shorter
-function draw(activePiece) {
-	var playAreaX = 300;
-	var playAreaY = 300;
-	var canvas = document.getElementById("canvas");
-	var ctx = canvas.getContext("2d");
+function Score() {
+  var score = 0,
+    line_score = 1000,
+    multi_line_bonus = true;
 
-	ctx.fillStyle = "rgb(255, 255, 255)";
-	ctx.fillRect(0, 0, playAreaX, playAreaY);
+  this.removed_lines = function(num_lines) {
+    var bonus = num_lines * line_score;
+    if (multi_line_bonus) {
+      bonus *= num_lines;
+    }
+    score += bonus;
+  };
 
-	//Background stripes, mostly for debugging
-	ctx.fillStyle = "rgba(127, 75, 0, 0.3)";
-	ctx.fillRect(0, 0, 15, playAreaX);
-	ctx.fillRect(30, 0, 15, playAreaX);
-	ctx.fillRect(60, 0, 15, playAreaX);
-	ctx.fillRect(90, 0, 15, playAreaX);
-	ctx.fillRect(120, 0, 15, playAreaX);
-	ctx.fillRect(150, 0, 15, playAreaX);
+  this.draw = function() {
+    var score_div = document.getElementById("score");
+    if (score_div !== null) {
+      score_div.innerHTML = score;
+    }
+  };
 
-	var debug = "draw\n";
-
-	ctx.fillStyle = "rgb(0, 255, 0)";
-	for (x = 0; x < gameField.length; x++) {
-		for (y = 0; y < gameField[0].length; y++) {
-			debug += gameField[x][y] + ", ";
-			if (gameField[x][y] > 0) {
-				ctx.fillRect(x * 15 + 1, y * 15 + 1, 13, 13);
-			}
-		}
-		debug += "\n";
-	}
-
-	ctx.fillStyle = "rgb(255, 0, 0)";
-
-	//TODO To much repetition. Merge into a single function call
-	if (activePiece.orientation == 0) {
-		for (x = 0; x < activePiece.piece.length; x++) {
-			for (y = 0; y < activePiece.piece[x].length; y++) {
-				if (activePiece.piece[x][y] == 1) {
-					ctx.fillRect(activePiece.x + 1, activePiece.y + 1, 13, 13);
-				}
-				activePiece.x += 15;
-			}
-			activePiece.x -= (activePiece.piece[0].length * 15);
-			activePiece.y += 15;
-		}
-	} else if (activePiece.orientation == 90) {
-		activePiece.y -= (activePiece.piece[0].length - activePiece.piece.length) * 15;
-		for (y = activePiece.piece[0].length - 1; y >= 0; y--) {
-			for (x = 0; x < activePiece.piece.length; x++) {
-				//debug += "[" + x + "/" + y + ":" + activePiece.piece[x][y]  + "], ";
-				if (activePiece.piece[x][y] == 1) {
-					ctx.fillRect(activePiece.x + 1, activePiece.y + 1, 13, 13);
-				}
-				activePiece.x += 15;
-			}
-			//debug += ".";
-			activePiece.x -= (activePiece.piece.length * 15);
-			activePiece.y += 15;
-		}
-	} else if (activePiece.orientation == 180) {
-		for (x = activePiece.piece.length - 1; x >= 0; x--) {
-			for (y = 0; y < activePiece.piece[x].length; y++) {
-				//debug += "[" + x + "/" + y + ":" + activePiece.piece[x][y]  + "], ";
-				if (activePiece.piece[x][y] == 1) {
-					ctx.fillRect(activePiece.x + 1, activePiece.y + 1, 13, 13);
-				}
-				activePiece.x += 15;
-			}
-			//debug += ".";
-			activePiece.x -= (activePiece.piece[0].length * 15);
-			activePiece.y += 15;
-		}
-	} else if (activePiece.orientation == 270) {
-		for (y = 0; y < activePiece.piece[0].length; y++) {
-			for (x = 0; x < activePiece.piece.length; x++) {
-				//debug += "[" + x + "/" + y + ":" + activePiece.piece[x][y]  + "], ";
-				if (activePiece.piece[x][y] == 1) {
-					ctx.fillRect(activePiece.x + 1, activePiece.y + 1, 13, 13);
-				}
-				activePiece.x += 15;
-			}
-			//debug += ".";
-			activePiece.x -= (activePiece.piece.length * 15);
-			activePiece.y += 15;
-		}
-	}
-	if (debug > "") {
-		//alert(debug);
-	}
-
-	activePiece.y -= (activePiece.piece.length * 15);
-
-	//TODO Remove ugly hack!
-	if (
-		(activePiece.type = 1 && activePiece.orientation == 270) ||
-		(activePiece.type = 2 && activePiece.orientation == 270)) {
-		activePiece.y -= 15;
-	}
+  this.getScore = function() {
+    return score;
+  };
 }
 
-//"Class" to store a list of function callbacks the program uses for different keys. Also maps key-numbers to convenient names.
+/**
+ * Functionality of a single falling tetris block.
+ */
+function Block(state) {
+  this.type = Math.ceil(Math.random() * 7) - 1;
+  this.color = state.layout_colors[this.type];
+
+  this.orientation = 0;
+
+  var layout = state.available_layouts[this.type];
+
+
+  this.height = function () {
+    if (this.orientation === 0 || this.orientation === 180) {
+      return layout.length;
+    }
+    return layout[0].length;
+  };
+
+  this.width = function () {
+     if (this.orientation === 90 || this.orientation === 270) {
+      return layout.length;
+    }
+    return layout[0].length;
+  };
+
+  this.x = Math.floor(state.playAreaX / 2 - this.width() / 2);
+  this.y = 0;
+
+  this.draw = function (ctx) {
+    ctx.fillStyle = this.color;
+
+    var render_offsets = { "x": 0, "y": 0 },
+      step, filled,
+      render_coord_x, render_coord_y;
+
+    for (step = 0; step < this.width() * this.height(); step++) {
+      filled = this.piece_filled(step);
+
+      // Render if necessary.
+      if (filled) {
+        render_coord_x = (this.x + render_offsets.x) * state.blockSize;
+        render_coord_y = (this.y + render_offsets.y) * state.blockSize;
+
+        ctx.fillRect(render_coord_x + 1, render_coord_y + 1, state.blockSize - 2, state.blockSize - 2);
+      }
+
+      render_offsets = this.update_render_offsets(render_offsets);
+    }
+  };
+
+  /**
+   * The naming and use of this function needs a review.
+   */
+  this.update_render_offsets = function(render_offsets) {
+    render_offsets.x++;
+
+    if (render_offsets.x >= this.width()) {
+      render_offsets.y++;
+      render_offsets.x = 0;
+    }
+
+    return render_offsets;
+  };
+
+  /**
+   * Figure out if the current piece in a block is filled..
+   */
+  this.piece_filled = function (step) {
+    var coordinates = this.step_to_rotated_coordinates(step),
+      filled = layout[coordinates.y][coordinates.x];
+    return !!filled;
+  };
+
+  /**
+   * Converts "search steps" into local x/y coordinates.
+   */
+  this.step_to_coordinates = function(step) {
+    var coords = { x: 0, y: 0 };
+
+    if (this.orientation === 0 || this.orientation === 180) {
+      coords.x = step % this.width();
+      coords.y = Math.floor(step / this.width());
+    }
+    else {
+      coords.x = Math.floor(step / this.width());
+      coords.y = ((step + 1) % this.width());
+    }
+
+    return coords;
+  };
+
+  /**
+   * Converts "search steps" into local x/y coordinates adjusted for piece
+   * rotation.
+   */
+  this.step_to_rotated_coordinates = function(step) {
+    var coords = this.step_to_coordinates(step);
+
+    if (this.orientation === 180) {
+      coords.x = this.width() - coords.x - 1;
+      coords.y = this.height() - coords.y - 1;
+    }
+    else if (this.orientation === 270) {
+      coords.x = this.width() - coords.x;
+      // @TODO Ugly hack. Figure out and fix.
+      if (this.type === 6) { coords.x--; }
+      if (this.width() === 4) { coords.x -= 4; }
+      coords.y = this.width() - coords.y - 1;
+    }
+
+    return coords;
+  };
+
+  this.down = function () {
+    state.gameField.check_hit_bottom(state.block, "d");
+
+    if (state.block.replace !== true) {
+      this.y += 1;
+    }
+  };
+}
+
+/**
+ * Render the game surface on a canvas.
+ */
+function Canvas_renderer(canvas_id) {
+  this.draw = function(state) {
+    var canvas = document.getElementById(canvas_id),
+      ctx = canvas.getContext("2d");
+
+    state.gameField.draw(ctx);
+    state.block.draw(ctx);
+    state.score.draw();
+  };
+}
+
+/**
+ * Keep track of list of keypress to function callback mapping.
+ */
 function Keyboard() {
-	//Store a reference to "this" in a var. We need this because when the event function gets called by the browser, "this" will refer to the browser window.
-	var self = this;
+  // Make assigning keys easier.
+  this.up = 38;
+  this.right = 39;
+  this.left = 37;
+  this.down = 40;
 
-	//List of keys we hook
-	this.up = 38;
-	this.right = 39;
-	this.left = 37;
-	this.down = 40;
+  var callbacks = {};
 
-	//Arrays holding the hooked keys and their callbacks. TODO: replace with associative array
-	this.keys = [];
-	this.callbacks = [];
+  //Register a new hook
+  this.add = function(key, callback) {
+    callbacks[key] = callback;
+  };
 
-	//Register a new hook
-	this.add = function(key, callback) {
-		this.keys.push(key);
-		this.callbacks.push(callback);
-	}
+  // onkeydown callback.
+  this.event = function(e) {
+    if (callbacks[e.keyCode] === undefined) {
+      return;
+    }
 
-	//We expect this to be called onkeydown
-	this.event = function(e) {
-		for (var i = 0; i < self.callbacks.length; i++) {
-			if (e.keyCode == self.keys[i]) {
-				self.callbacks[i]();
-			}
-		}
-	}
+    callbacks[e.keyCode]();
+  };
 }
+
+/**
+ * Print, debugging tool.
+ */
+function p(text) {
+  var debug_div = document.getElementById("debug_messages");
+  if (debug_div !== null) {
+    debug_div.innerHTML = text + '<br/> ' + debug_div.innerHTML;
+  }
+}
+
+function getUrlVars() {
+  var vars = {};
+  window.location.href.replace(/[?&]+([^=&]+)=([^&]*)/gi, function(m, key, value) {
+    vars[key] = value;
+  });
+  return vars;
+}
+
+  return new Tetris();
+})();

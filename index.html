@@ -1,8 +1,16 @@
 <html>
-<HEAD>
-<SCRIPT type="text/javascript" src="tetris.js"></SCRIPT>
-</HEAD>
-<body onLoad = "tetris()">
-	<canvas id="canvas" width="300" height="300"></canvas>  
+<head>
+  <script type = "text/javascript" src = "tetris.js"></script>
+</head>
+
+<body onLoad = "Tetris.init('tetris_canvas');">
+  <div class = "main-wrapper" style = "margin: 0 auto; width: 200px;">
+    <div id = "debug_grid"></div>
+    <canvas id = "tetris_canvas" width = "170" height = "300"></canvas>
+    <p>Score: <div id = "score"></div></p>
+    <div id = "debug_messages" style = "float: right;"></div>
+    <div id = "debug_state"></div>
+  </div>
 </body>
-</html> 
+
+</html>
