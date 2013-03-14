@@ -7,11 +7,6 @@ var Tetris = (function() {
 "use strict";
 
 /**
- * @file
- * Tetris game.
- */
-
-/**
  * Initialize the game.
  */
 function Tetris() {
@@ -26,11 +21,11 @@ function Tetris() {
       if (state.gameField.check_direction(state.block)) {
         clearInterval(gameLoopTimerID);
         gameOver();
-        this.init();
+        this.init(state.canvas_id);
       }
     }
 
-    down();
+    down.call(this);
 
     renderer.draw(state);
   };
@@ -71,7 +66,15 @@ function Tetris() {
     renderer.draw(state);
 
     clearInterval(gameLoopTimerID);
-    gameLoopTimerID = setInterval(gameLoop, calculate_loop_timer(state.loop_timer, state.level));
+    gameLoopTimerID = setInterval(
+      (function(self) {
+        return function() {
+          gameLoop.call(self);
+        };
+      })(this),
+      calculate_loop_timer(state.loop_timer, state.level)
+    );
+
   };
 
   /**
@@ -86,11 +89,19 @@ function Tetris() {
     var debug = getUrlVars().debug;
 
     state = new GameState();
+    state.canvas_id = canvas_id;
     renderer = new Canvas_renderer(canvas_id);
     keyboard = new Keyboard();
     document.onkeydown = keyboard.event;
 
-    gameLoopTimerID = setInterval(gameLoop, state.loop_timer);
+    gameLoopTimerID = setInterval(
+      (function(self) {
+        return function() {
+          gameLoop.call(self);
+        };
+      })(this),
+      state.loop_timer
+    );
 
     if (debug) {
       render_debug_grid();
@@ -100,7 +111,11 @@ function Tetris() {
     keyboard.add(keyboard.right, right);
     keyboard.add(keyboard.left, left);
     keyboard.add(keyboard.up, up);
-    keyboard.add(keyboard.down, down);
+    keyboard.add(keyboard.down, (function(self) {
+      return function() {
+        down.call(self);
+      };
+    })(this));
     renderer.draw(state);
   };
 
@@ -189,12 +204,15 @@ function GameState() {
   this.removed_lines = 0;
 
   this.level = 0;
+
+  this.canvas_id = '';
 }
 
 function GameField(gameState) {
   var state = gameState,
     gameField = [],
     x, y;
+
   for (x = 0; x < state.playAreaX; x++) {
     gameField[x] = [];
     for (y = 0; y < state.playAreaY; y++) {
